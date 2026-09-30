@@ -1,0 +1,25 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>画面・保存テスト</title><h1>画面・保存テスト（実データの保存は変更しません）</h1><pre id="results">検証中…</pre><div id="host"></div><script>
+(async()=>{
+const lines=[], key='history-travel.progress.quality-v3.v1', v2='history-travel.progress.quality-v2.v1', legacy='history-travel.progress.v1';
+const oldSave=JSON.stringify({version:1,clearedIds:['edo-001','ancient-001']});
+const saves={[legacy]:JSON.stringify({version:1,clearedIds:['edo-001']}),[v2]:oldSave};
+window.testStore={getItem:k=>saves[k]??null,setItem:(k,v)=>{saves[k]=v;}};
+const source=await(await fetch('../index.html')).text();
+const base=new URL('../',location.href).href;
+async function mount(){const frame=document.createElement('iframe');frame.width='390';frame.height='844';const ready=new Promise(resolve=>frame.onload=resolve);frame.srcdoc=source.replace('<head>','<head><base href="'+base+'"><script>Object.defineProperty(window,"localStorage",{value:parent.testStore});<\/script>');document.querySelector('#host').replaceChildren(frame);await ready;return frame;}
+function assert(ok,msg){if(!ok)throw Error(msg);}
+function report(s){lines.push('PASS: '+s);document.querySelector('#results').textContent=lines.join('\n');}
+try {
+let frame=await mount(), doc=frame.contentDocument;
+assert(frame.contentWindow.QUESTIONS.length===1000,'v3の1000問');assert([...doc.scripts].some(s=>s.src.endsWith('/data/questions-1000-quality-v3.js')),'v3を読込');
+assert(doc.querySelector('.collection-count').textContent.includes('/ 1000'),'1000問表示');assert(doc.querySelector('.collection-count strong').textContent==='0','旧データは混同しない');report('v3の1000問読込・v2/旧保存から独立して0 / 1000表示');
+const eras=[...doc.querySelectorAll('#era option')].map(o=>o.value);assert(eras.length===11,'全10時代');
+let totalCorrect=0;
+for(const era of eras){doc.querySelector('#era').value=era;doc.querySelector('#era').dispatchEvent(new frame.contentWindow.Event('change'));doc.querySelector('#start').click();const seen=new Set();let score=0;for(let i=0;i<10;i++){const title=doc.querySelector('.question-card h1').textContent;assert(!seen.has(title),'重複問題');seen.add(title);if(era!=='all')assert(doc.querySelector('.era-badge').textContent===era,'時代違い');const buttons=doc.querySelectorAll('.choice');const choices=[...buttons].map(b=>b.children[1].textContent);const q=frame.contentWindow.QUESTIONS.find(q=>q.question===title && q.era===doc.querySelector('.era-badge').textContent && JSON.stringify(q.choices)===JSON.stringify(choices));const chosen=i%2===0?q.answer:(q.answer+1)%4;buttons[chosen].click();buttons[chosen].click();assert([...buttons].every(b=>b.disabled),'回答後無効化');assert(doc.querySelector('.explanation').textContent===q.explanation,'解説');if(chosen===q.answer)score++;assert(doc.querySelector('#feedback').textContent.includes(chosen===q.answer?'大正解':'おしい'),'正誤');doc.querySelector('#next').click();}assert(doc.querySelector('.result-score strong').textContent===String(score),'得点');totalCorrect+=score;doc.querySelector('#home').click();report((era==='all'?'全時代':era)+'：10問完走・正誤・解説・得点・重複なし');}
+const expected=new Set(JSON.parse(saves[key]).clearedIds).size;assert(expected>0 && expected<=totalCorrect,'保存件数');assert(doc.querySelector('.collection-count strong').textContent===String(expected),'進捗更新');frame=await mount();doc=frame.contentDocument;assert(doc.querySelector('.collection-count strong').textContent===String(expected),'復元');assert(saves[legacy]===JSON.stringify({version:1,clearedIds:['edo-001']}),'旧データ保持');assert(saves[v2]===oldSave,'v2記録保持');report('v3保存・再読み込み復元・進捗更新・旧記録保持：'+expected+' / 1000');
+doc.querySelector('#start').click();for(let i=0;i<10;i++){doc.querySelector('.choice').click();doc.querySelector('#next').click();}doc.querySelector('#again').click();assert(doc.querySelector('.question-progress').textContent.includes('第 1 問'),'再プレイ');report('結果から再プレイ');
+for(const invalid of ['{broken','null',JSON.stringify({version:1,clearedIds:[null,42,'unknown-id']}),JSON.stringify({version:9,clearedIds:[]})]){saves[key]=invalid;frame=await mount();assert(frame.contentDocument.querySelector('#start'),'不正保存から起動');}report('破損JSON・null・不正ID・未知バージョンでも起動');
+window.testStore={getItem:()=>{throw Error('blocked');},setItem:()=>{throw Error('blocked');}};frame=await mount();assert(!frame.contentDocument.querySelector('#storage-notice').hidden,'保存不可通知');frame.contentDocument.querySelector('#start').click();assert(frame.contentDocument.querySelector('.choice'),'保存不可でもプレイ');report('ストレージ利用不可でもプレイ可能');
+} catch(e){lines.push('FAIL: '+e.message);document.querySelector('#results').textContent=lines.join('\n');}
+})();
+</script></html>

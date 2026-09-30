@@ -1,0 +1,14 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>1000問版の検証</title><h1>1000問版の検証</h1><pre id="results">検証中…</pre><script src="../data/questions-1000-quality-v3.js"></script><script src="../js/core.js"></script><script>
+const results = [];
+function test(name, fn) { try { fn(); results.push('PASS: ' + name); } catch(e) { results.push('FAIL: ' + name + ': ' + e.message); } }
+function assert(ok) { if(!ok) throw Error('期待と異なる結果'); }
+const qs = window.QUESTIONS, core = window.QuizCore;
+let seed=123456; const random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+test('1000問・一意ID・4択・整数answer 0〜3・必須項目',()=>{ core.validate(qs); assert(qs.length===1000); });
+test('v3の問題文1000件がすべて異なる',()=>assert(new Set(qs.map(q=>q.question)).size===1000));
+test('全時代100プレイ：10問・IDと問題文重複なし・元データ不変',()=>{const original=JSON.stringify(qs);const eras=new Set();for(let i=0;i<100;i++){const r=core.select(qs,'all',random);assert(r.length===10 && new Set(r.map(q=>q.id)).size===10 && new Set(r.map(q=>q.question)).size===10);r.forEach(q=>eras.add(q.era));}assert(JSON.stringify(qs)===original && eras.size===10);});
+test('全10時代で各20プレイ：10問・指定時代のみ',()=>{for(const era of new Set(qs.map(q=>q.era))){assert(core.ERAS.includes(era));for(let i=0;i<20;i++){const r=core.select(qs,era,random);assert(r.length===10 && r.every(q=>q.era===era) && new Set(r.map(q=>q.question)).size===10);}}});
+test('未クリア優先・クリア済みも出題（固定乱数・2000プレイ）',()=>{const pool=Array.from({length:100},(_,i)=>({...qs[0],id:String(i),question:String(i)}));const cleared=new Set(pool.slice(0,50).map(q=>q.id));let fresh=0;for(let i=0;i<2000;i++)fresh+=core.select(pool,'all',random,cleared).filter(q=>!cleared.has(q.id)).length;const ratio=fresh/20000;assert(ratio>.60 && ratio<.72);results.push('INFO: 未クリア選択率 '+(ratio*100).toFixed(1)+'%（母集団は半数未クリア）');});
+test('全クリア・未クリア残り1問でも10問出題',()=>{const all=new Set(qs.map(q=>q.id));assert(core.select(qs,'all',random,all).length===10);all.delete(qs[0].id);assert(core.select(qs,'all',random,all).length===10);});
+document.querySelector('#results').textContent=results.join('\n');
+</script><p><a href="integration.html">画面・保存テストへ</a></p></html>
